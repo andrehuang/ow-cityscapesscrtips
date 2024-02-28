@@ -457,7 +457,7 @@ def printCategoryScores(scoreDict, instScoreDict, args):
         print("{:<14}: ".format(categoryName) + iouStr + "    " + niouStr)
 
 # Evaluate image lists pairwise.
-def evaluateImgLists(predictionImgList, groundTruthImgList, args):
+def evaluateImgLists(predictionImgList, groundTruthImgList, args, simi_matrix):
     if len(predictionImgList) != len(groundTruthImgList):
         printError("List of images for prediction and groundtruth are not of equal size.")
     confMatrix    = generateMatrix(args)
@@ -493,17 +493,26 @@ def evaluateImgLists(predictionImgList, groundTruthImgList, args):
     if (not args.quiet):
         printConfMatrix(confMatrix, args)
 
+    ## Compute OW confMatrix
+    # print(confMatrix.shape) # (34,34)
+    # print(confMatrix[0])
+    ow_conf_matrix = copy.deepcopy(confMatrix.astype(np.float64))
+    ow_tp = np.sum(ow_conf_matrix * simi_matrix, axis=0)
+    ow_conf_matrix *= (1-simi_matrix)
+    row, col = np.diag_indices_from(ow_conf_matrix)
+    ow_conf_matrix[row,col] = ow_tp
+
     # Calculate IOU scores on class level from matrix
     classScoreList = {}
     for label in args.evalLabels:
         labelName = id2label[label].name
-        classScoreList[labelName] = getIouScoreForLabel(label, confMatrix, args)
+        classScoreList[labelName] = getIouScoreForLabel(label, ow_conf_matrix, args)
 
     # Calculate instance IOU scores on class level from matrix
     classInstScoreList = {}
     for label in args.evalLabels:
         labelName = id2label[label].name
-        classInstScoreList[labelName] = getInstanceIouScoreForLabel(label, confMatrix, instStats, args)
+        classInstScoreList[labelName] = getInstanceIouScoreForLabel(label, ow_conf_matrix, instStats, args)
 
     # Print IOU scores
     if (not args.quiet):
@@ -520,12 +529,12 @@ def evaluateImgLists(predictionImgList, groundTruthImgList, args):
     # Calculate IOU scores on category level from matrix
     categoryScoreList = {}
     for category in category2labels.keys():
-        categoryScoreList[category] = getIouScoreForCategory(category,confMatrix,args)
+        categoryScoreList[category] = getIouScoreForCategory(category,ow_conf_matrix,args)
 
     # Calculate instance IOU scores on category level from matrix
     categoryInstScoreList = {}
     for category in category2labels.keys():
-        categoryInstScoreList[category] = getInstanceIouScoreForCategory(category,confMatrix,instStats,args)
+        categoryInstScoreList[category] = getInstanceIouScoreForCategory(category,ow_conf_matrix,instStats,args)
 
     # Print IOU scores
     if (not args.quiet):
@@ -538,7 +547,7 @@ def evaluateImgLists(predictionImgList, groundTruthImgList, args):
         print("--------------------------------")
         print("")
 
-    allResultsDict = createResultDict( confMatrix, classScoreList, classInstScoreList, categoryScoreList, categoryInstScoreList, perImageStats, args )
+    allResultsDict = createResultDict( ow_conf_matrix, classScoreList, classInstScoreList, categoryScoreList, categoryInstScoreList, perImageStats, args )
     # write result file
     if args.JSONOutput:
         writeJSONFile( allResultsDict, args)
